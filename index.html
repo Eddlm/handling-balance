@@ -219,6 +219,9 @@
                     <button type="button" id="topSpeedHeader" class="btn btn-link p-0 w-100 text-end text-decoration-none link-body-emphasis fw-semibold" data-key="topSpeedMph">Top Speed (mph)</button>
                   </th>
                   <th scope="col" class="text-end">
+                    <button type="button" class="btn btn-link p-0 w-100 text-end text-decoration-none link-body-emphasis fw-semibold" data-key="offroadPenalty">Offroad Penalty</button>
+                  </th>
+                  <th scope="col" class="text-end">
                     <button type="button" class="btn btn-link p-0 w-100 text-end text-decoration-none link-body-emphasis fw-semibold" data-key="clearanceM">Clearance (meters)</button>
                   </th>
                 </tr>
@@ -293,6 +296,7 @@
           fInitialDriveForce: getNumericValue(item, 'fInitialDriveForce'),
           fBrakeForce: getNumericValue(item, 'fBrakeForce'),
           fTractionCurveMax: getNumericValue(item, 'fTractionCurveMax'),
+          fTractionLossMult: getNumericValue(item, 'fTractionLossMult'),
           clearanceM: getNumericValue(item, 'fSuspensionUpperLimit')
         }))
         .filter((row) => row.handlingName && row.fInitialDriveForce >= 0.01);
@@ -312,6 +316,7 @@
         driveForceScaled: row.fInitialDriveForce ,
         braking: row.fBrakeForce * 4,
         grip: row.fTractionCurveMax,
+        offroadPenalty: row.fTractionLossMult,
         topSpeedMph: SolveDragLimitedSpeed(
           row.fInitialDriveMaxFlatVel,
           row.fInitialDragCoeff,
@@ -346,6 +351,7 @@
       driveForceScaled: 1,
       braking: 3,
       grip: 3,
+      offroadPenalty: 1.5,
       topSpeedMph: 300,
       clearanceM: 0.5
     };
@@ -491,6 +497,7 @@
           ${renderMetricCell(row.braking, 2, metricMax.braking)}
           ${renderMetricCell(row.grip, 2, metricMax.grip)}
           ${renderTopSpeedCell(row)}
+          ${renderMetricCell(row.offroadPenalty, 3, metricMax.offroadPenalty)}
           ${renderMetricCell(row.clearanceM, 3, metricMax.clearanceM)}
         </tr>
       `).join('');
