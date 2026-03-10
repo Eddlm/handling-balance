@@ -168,7 +168,7 @@
       <div class="card-body p-3 p-md-4">
         <div class="row g-3 align-items-center mb-3">
           <div class="col-12 col-lg">
-            <div class="meta">Load a handling meta file, then browse sortable car stats calculated from its live values. Boats, aircraft, bikes, submarines, and entries with very low drive force are skipped.</div>
+            <div class="meta">By default this loads my own basegame files, to help me out with balance. You can also drop your files for the same use!</div>
           </div>
           <div class="col-12 col-lg-auto">
             <div class="d-flex flex-column flex-sm-row align-items-sm-center gap-2">
@@ -182,7 +182,7 @@
                 <button type="button" id="viewNumbersButton" class="btn btn-outline-secondary">numbers</button>
                 <button type="button" id="viewBarsButton" class="btn btn-outline-secondary active">bars</button>
               </div>
-              <input id="metaFileInput" type="file" accept=".meta,.xml,text/xml,application/xml" class="d-none">
+              <input id="metaFileInput" type="file" accept=".meta,.xml,text/xml,application/xml" class="d-none" multiple>
             </div>
           </div>
         </div>
@@ -196,7 +196,7 @@
           <div id="dropZone" class="drop-zone text-center p-3 flex-grow-1">
             Drop a <code>.meta</code> file here to load it.
           </div>
-          <button type="button" id="loadHandlingButton" class="btn btn-outline-secondary">Load handling.meta</button>
+          <button type="button" id="loadHandlingButton" class="btn btn-outline-secondary">Load handling_basegame.meta</button>
         </div>
         <div class="table-shell">
           <div class="table-wrap">
@@ -281,7 +281,7 @@
       const xml = new DOMParser().parseFromString(metaText, 'application/xml');
       const parseError = xml.querySelector('parsererror');
       if (parseError) {
-        throw new Error('Failed to parse handling.meta');
+        throw new Error('Failed to parse handling_basegame.meta');
       }
 
       return Array.from(xml.querySelectorAll('HandlingData > Item[type="CHandlingData"]'))
@@ -503,11 +503,11 @@
       rowCount.textContent = 'Loading handling data...';
       emptyState.style.display = 'none';
 
-      const response = await fetch(`./handling.meta?v=${Date.now()}`, {
+      const response = await fetch(`./handling_basegame.meta?v=${Date.now()}`, {
         cache: 'no-store'
       });
       if (!response.ok) {
-        throw new Error(`Failed to load handling.meta (${response.status})`);
+        throw new Error(`Failed to load handling_basegame.meta (${response.status})`);
       }
 
       const metaText = await response.text();
@@ -515,29 +515,38 @@
       render();
     }
 
-    async function loadRowsFromFile(file) {
-      rowCount.textContent = `Loading ${file.name}...`;
+    async function loadRowsFromFiles(files) {
+      rowCount.textContent = files.length === 1
+        ? `Loading ${files[0].name}...`
+        : `Loading ${files.length} files...`;
       emptyState.style.display = 'none';
-      const metaText = await file.text();
-      if (!isValidHandlingMeta(metaText)) {
-        throw new Error(`${file.name} is not a valid handling meta file`);
+
+      const rawRows = [];
+      for (const file of files) {
+        const metaText = await file.text();
+        if (!isValidHandlingMeta(metaText)) {
+          throw new Error(`${file.name} is not a valid handling meta file`);
+        }
+        rawRows.push(...parseHandlingMeta(metaText));
       }
-      rows = buildRows(parseHandlingMeta(metaText));
+
+      rows = buildRows(rawRows);
       render();
     }
 
-    async function handleMetaFile(file) {
-      if (!file) {
+    async function handleMetaFiles(fileList) {
+      const files = Array.from(fileList || []).filter(Boolean);
+      if (!files.length) {
         return;
       }
       try {
-        await loadRowsFromFile(file);
+        await loadRowsFromFiles(files);
       } catch (error) {
         console.error(error);
         rows = [];
         body.innerHTML = '';
-        rowCount.textContent = `Failed to load ${file.name}`;
-        emptyState.textContent = `Could not parse ${file.name}.`;
+        rowCount.textContent = `Failed to load ${files.length === 1 ? files[0].name : 'meta files'}`;
+        emptyState.textContent = error.message || 'Could not parse the selected meta files.';
         emptyState.style.display = 'block';
       }
     }
@@ -580,8 +589,7 @@
     });
 
     metaFileInput.addEventListener('change', async (event) => {
-      const [file] = event.target.files || [];
-      await handleMetaFile(file);
+      await handleMetaFiles(event.target.files);
       metaFileInput.value = '';
     });
 
@@ -601,8 +609,7 @@
     dropZone.addEventListener('drop', async (event) => {
       event.preventDefault();
       dropZone.classList.remove('drag-active');
-      const [file] = event.dataTransfer?.files || [];
-      await handleMetaFile(file);
+      await handleMetaFiles(event.dataTransfer?.files);
     });
 
     loadHandlingButton.addEventListener('click', () => {
@@ -610,8 +617,8 @@
         console.error(error);
         rows = [];
         body.innerHTML = '';
-        rowCount.textContent = 'Failed to load handling.meta';
-        emptyState.textContent = 'Could not load handling.meta. If this page is opened as a local file, use drag-and-drop instead.';
+        rowCount.textContent = 'Failed to load handling_basegame.meta';
+        emptyState.textContent = 'Could not load handling_basegame.meta. If this page is opened as a local file, use drag-and-drop instead.';
         emptyState.style.display = 'block';
         syncSpeedUnitUi();
       });
@@ -621,7 +628,7 @@
       console.error(error);
       rows = [];
       body.innerHTML = '';
-      rowCount.textContent = 'Could not auto-load handling.meta';
+      rowCount.textContent = 'Could not auto-load handling_basegame.meta';
       emptyState.textContent = 'Auto-load failed. Drop the file here to load it locally, or open this page through a local web server.';
       emptyState.style.display = 'block';
       syncSpeedUnitUi();
