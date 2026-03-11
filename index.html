@@ -237,39 +237,28 @@
   <script>
     let rows = [];
 
-    function getRealEngineTopspeed(flatVel) {
-      return flatVel * 0.82 * 0.44704;
-    }
-
     function getSpeedMph(speedMs) {
       return speedMs * 2.236936292;
     }
 
- 
-    function terminalSpeed(power, dragAtSpeed) {
-      if (dragAtSpeed <= 0) return Infinity;
-      return Math.sqrt(power / dragAtSpeed);
+    function flatVelToEstimatedMaxSpeedMs(flatVel) {
+      return (flatVel * 0.6213712 / 0.75) * 0.44704;
     }
 
-    function dragAtSpeed(speed, k) {
-      return (k * speed * speed) * 0.00001;
-    }
+    function calculateDragCoeffFromEstimatedTopSpeed(estimatedMaxSpeedMs, targetAcceleration) {
+      const refSpeedDrag = Math.pow((estimatedMaxSpeedMs / 0.75) / 5, 2) / 2500;
+      let dragCoeff = 0;
 
-    function netAcceleration(speed, acceleration, k) {
-      return acceleration - dragAtSpeed(speed, k);
-    }
-    function SolveDragLimitedSpeed(flatVel, dragCoeff, driveForce) {
-      let seedSpeed = getRealEngineTopspeed(flatVel);
-      const k = dragCoeff;
-      const power = driveForce*0.9;
+      for (let i = 1; i < 100; i += 0.01) {
+        dragCoeff = Number(i.toFixed(2));
+        const mathDrag = refSpeedDrag * dragCoeff;
 
-      for (let i = 1; i < 100; i++) {
-        var accl = netAcceleration(seedSpeed, power, k);
-        seedSpeed += accl*20;
-        if (Math.abs(accl) < 0.01) return getSpeedMph(seedSpeed);
+        if (mathDrag > targetAcceleration) {
+          break;
+        }
       }
 
-      return getSpeedMph(seedSpeed);
+      return dragCoeff;
     }
 
     function getNumericValue(item, tagName) {
@@ -312,16 +301,16 @@
 
     function buildRows(rawRows) {
       return rawRows.map((row) => ({
+        estimatedDragCoeff: calculateDragCoeffFromEstimatedTopSpeed(
+          flatVelToEstimatedMaxSpeedMs(row.fInitialDriveMaxFlatVel),
+          row.fInitialDriveForce
+        ),
         handlingName: row.handlingName,
         driveForceScaled: row.fInitialDriveForce ,
         braking: row.fBrakeForce * 4,
         grip: row.fTractionCurveMax,
         offroadPenalty: row.fTractionLossMult,
-        topSpeedMph: SolveDragLimitedSpeed(
-          row.fInitialDriveMaxFlatVel,
-          row.fInitialDragCoeff,
-          row.fInitialDriveForce
-        ),
+        topSpeedMph: getSpeedMph(flatVelToEstimatedMaxSpeedMs(row.fInitialDriveMaxFlatVel)),
         clearanceM: row.clearanceM
       }));
     }
