@@ -196,7 +196,7 @@
           <div id="dropZone" class="drop-zone text-center p-3 flex-grow-1">
             Drop a <code>.meta</code> file here to load it.
           </div>
-          <button type="button" id="loadHandlingButton" class="btn btn-outline-secondary">Load handling_basegame.meta</button>
+          <button type="button" id="loadHandlingButton" class="btn btn-outline-secondary">Load default handling files</button>
         </div>
         <div class="table-shell">
           <div class="table-wrap">
@@ -236,6 +236,8 @@
   </main>
   <script>
     let rows = [];
+    const HANDLINGS_DIRECTORY = './handlings/';
+    const HANDLINGS_MANIFEST_PATH = `${HANDLINGS_DIRECTORY}index.json`;
 
     function getSpeedMph(speedMs) {
       return speedMs * 2.236936292;
@@ -299,6 +301,59 @@
       return Boolean(xml.querySelector('HandlingData'));
     }
 
+    async function getHandlingFilesFromManifest() {
+      const response = await fetch(`${HANDLINGS_MANIFEST_PATH}?v=${Date.now()}`, {
+        cache: 'no-store'
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to load ${HANDLINGS_MANIFEST_PATH} (${response.status})`);
+      }
+
+      const manifest = await response.json();
+      if (!Array.isArray(manifest.files)) {
+        throw new Error(`${HANDLINGS_MANIFEST_PATH} is missing a files array`);
+      }
+
+      return manifest.files
+        .filter((file) => typeof file === 'string' && /\.(meta|xml)$/i.test(file))
+        .map((file) => `${HANDLINGS_DIRECTORY}${file}`);
+    }
+
+    async function getHandlingFilesFromDirectoryListing() {
+      const response = await fetch(`${HANDLINGS_DIRECTORY}?v=${Date.now()}`, {
+        cache: 'no-store'
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to load ${HANDLINGS_DIRECTORY} (${response.status})`);
+      }
+
+      const html = await response.text();
+      const listing = new DOMParser().parseFromString(html, 'text/html');
+      return Array.from(listing.querySelectorAll('a[href]'))
+        .map((anchor) => anchor.getAttribute('href') || '')
+        .filter((href) => /\.(meta|xml)$/i.test(href))
+        .map((href) => new URL(href, `${location.href.replace(/[^/]*$/, '')}${HANDLINGS_DIRECTORY}`).pathname.split('/').pop())
+        .filter(Boolean)
+        .map((file) => `${HANDLINGS_DIRECTORY}${file}`);
+    }
+
+    async function getHandlingFiles() {
+      try {
+        const files = await getHandlingFilesFromManifest();
+        if (files.length) {
+          return files;
+        }
+      } catch (error) {
+        console.warn('Manifest lookup failed, trying directory listing.', error);
+      }
+
+      const files = await getHandlingFilesFromDirectoryListing();
+      if (!files.length) {
+        throw new Error(`No handling files found in ${HANDLINGS_DIRECTORY}`);
+      }
+      return files;
+    }
+
     function buildRows(rawRows) {
       return rawRows.map((row) => ({
         estimatedDragCoeff: calculateDragCoeffFromEstimatedTopSpeed(
@@ -344,6 +399,9 @@
       topSpeedMph: 300,
       clearanceM: 0.5
     };
+
+    rowCount.textContent = 'Click "Load default handling files" or drop handling meta files here.';
+    syncSpeedUnitUi();
 
     function formatNumber(value, digits) {
       return value.toLocaleString(undefined, {
@@ -496,18 +554,29 @@
     }
 
     async function loadRows() {
-      rowCount.textContent = 'Loading handling data...';
+      rowCount.textContent = 'Loading handling files...';
       emptyState.style.display = 'none';
 
-      const response = await fetch(`./handling_basegame.meta?v=${Date.now()}`, {
-        cache: 'no-store'
-      });
-      if (!response.ok) {
-        throw new Error(`Failed to load handling_basegame.meta (${response.status})`);
+      const filePaths = await getHandlingFiles();
+      const rawRows = [];
+
+      for (const filePath of filePaths) {
+        const response = await fetch(`${filePath}?v=${Date.now()}`, {
+          cache: 'no-store'
+        });
+        if (!response.ok) {
+          throw new Error(`Failed to load ${filePath} (${response.status})`);
+        }
+
+        const metaText = await response.text();
+        if (!isValidHandlingMeta(metaText)) {
+          throw new Error(`${filePath} is not a valid handling meta file`);
+        }
+
+        rawRows.push(...parseHandlingMeta(metaText));
       }
 
-      const metaText = await response.text();
-      rows = buildRows(parseHandlingMeta(metaText));
+      rows = buildRows(rawRows);
       render();
     }
 
@@ -613,22 +682,13 @@
         console.error(error);
         rows = [];
         body.innerHTML = '';
-        rowCount.textContent = 'Failed to load handling_basegame.meta';
-        emptyState.textContent = 'Could not load handling_basegame.meta. If this page is opened as a local file, use drag-and-drop instead.';
+        rowCount.textContent = 'Failed to load /handlings';
+        emptyState.textContent = 'Could not load handling files from /handlings. If this page is opened as a local file, use drag-and-drop instead.';
         emptyState.style.display = 'block';
         syncSpeedUnitUi();
       });
     });
 
-    loadRows().catch((error) => {
-      console.error(error);
-      rows = [];
-      body.innerHTML = '';
-      rowCount.textContent = 'Could not auto-load handling_basegame.meta';
-      emptyState.textContent = 'Auto-load failed. Drop the file here to load it locally, or open this page through a local web server.';
-      emptyState.style.display = 'block';
-      syncSpeedUnitUi();
-    });
   </script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
     integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI"
